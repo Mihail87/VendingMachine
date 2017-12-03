@@ -2,13 +2,14 @@
 //  VendingMachine.swift
 //  VendingMachine
 //
-//  Created by Mihai Leonte on 11/29/17.
-//  Copyright © 2017 Treehouse Island, Inc. All rights reserved.
+//  Created by Screencast on 12/6/16.
+//  Copyright © 2016 Treehouse Island, Inc. All rights reserved.
 //
 
 import Foundation
+import UIKit
 
-enum VendingSelection {
+enum VendingSelection: String {
     case soda
     case dietSoda
     case chips
@@ -21,6 +22,14 @@ enum VendingSelection {
     case fruitJuice
     case sportsDrink
     case gum
+    
+    func icon() -> UIImage {
+        if let image = UIImage(named: self.rawValue) {
+            return image
+        } else {
+            return #imageLiteral(resourceName: "default")
+        }
+    }
 }
 
 protocol VendingItem {
@@ -34,9 +43,9 @@ protocol VendingMachine {
     var amountDeposited: Double { get set }
     
     init(inventory: [VendingSelection: VendingItem])
-    func vend(_ quantity: Int, _ selection: VendingSelection) throws
-    //func vend(selection: VendingSelection, quantity: Int) throws
+    func vend(selection: VendingSelection, quantity: Int) throws
     func deposit(_ amount: Double)
+    func item(forSelection selection: VendingSelection) -> VendingItem?
 }
 
 struct Item: VendingItem {
@@ -47,6 +56,7 @@ struct Item: VendingItem {
 enum InventoryError: Error {
     case invalidResource
     case conversionFailure
+    case invalidSelection
 }
 
 class PlistConverter {
@@ -63,8 +73,36 @@ class PlistConverter {
     }
 }
 
+class InventoryUnarchiver {
+    static func vendingInventory(fromDictionary dictionary: [String: AnyObject]) throws -> [VendingSelection: VendingItem] {
+        
+        var inventory: [VendingSelection: VendingItem] = [:]
+        
+        for (key, value) in dictionary {
+            if let itemDictionary = value as? [String: Any], let price = itemDictionary["price"] as? Double, let quantity = itemDictionary["quantity"] as? Int {
+                let item = Item(price: price, quantity: quantity)
+                
+                guard let selection = VendingSelection(rawValue: key) else {
+                    throw InventoryError.invalidSelection
+                }
+                
+                inventory.updateValue(item, forKey: selection)
+            }
+        }
+        
+        
+        return inventory
+    }
+}
+
+enum VendingMachineError: Error {
+    case invalidSelection
+    case outOfStock
+    case insufficientFunds(required: Double)
+}
+
 class FoodVendingMachine: VendingMachine {
-    let selection: [VendingSelection] = [.soda, .dietSoda, .chips, .cookie, .sandwich, .wrap, .candyBar, .popTart, .water, .fruitJuice, .sportsDrink, .gum]
+    let selection: [VendingSelection] = [.soda, .dietSoda, .chips, .cookie, .wrap, .sandwich, .candyBar, .popTart, .water, .fruitJuice, .sportsDrink, .gum]
     var inventory: [VendingSelection : VendingItem]
     var amountDeposited: Double = 10.0
     
@@ -72,11 +110,76 @@ class FoodVendingMachine: VendingMachine {
         self.inventory = inventory
     }
     
-    func vend(_ quantity: Int, _ selection: VendingSelection) throws {
+    func vend(selection: VendingSelection, quantity: Int) throws {
+        guard var item = inventory[selection] else {
+            throw VendingMachineError.invalidSelection
+        }
         
+        guard item.quantity >= quantity else {
+            throw VendingMachineError.outOfStock
+        }
+        
+        let totalPrice = item.price * Double(quantity)
+        
+        if amountDeposited >= totalPrice {
+            amountDeposited -= totalPrice
+            
+            item.quantity -= quantity
+            
+            inventory.updateValue(item, forKey: selection)
+        } else {
+            let amountRequired = totalPrice - amountDeposited
+            throw VendingMachineError.insufficientFunds(required: amountRequired)
+        }
     }
     
     func deposit(_ amount: Double) {
-        
+        amountDeposited += amount
+    }
+    
+    func item(forSelection selection: VendingSelection) -> VendingItem? {
+        return inventory[selection]
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
